@@ -6,8 +6,9 @@ const connectionURL = process.env.MONGODB_URL + "/task-manager"
 
 mongoose.connect(connectionURL, {
     useNewUrlParser: true,
-    userCreateIndex: true,
-    useFindAndModify: false
+    useUnifiedTopology: true,
+    useCreateIndex: true,
+    useFindAndModify: false,
 }).then((result) => {
     // console.log("Sucessfully connected to mongoose")
 }).catch((error) => {
