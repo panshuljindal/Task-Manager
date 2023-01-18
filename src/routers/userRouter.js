@@ -2,8 +2,26 @@ const express = require('express')
 const User = require("../models/user")
 const router = new express.Router()
 const auth = require("../middleware/auth")
+const multer = require("multer")
+const sharp = require("sharp")
 
-router.post("/users", async (req, res) => {
+const avatar = multer({
+    limits: {
+        fileSize: 1000000
+    },
+    fileFilter(req, file, cb) {
+        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+            cb(new Error("Please upload an Image"))
+        }
+        cb(undefined, true)
+    }
+})
+
+
+
+
+
+router.post("/userSignin", async (req, res) => {
     const user = new User(req.body)
 
     try {
@@ -15,7 +33,7 @@ router.post("/users", async (req, res) => {
 
 })
 
-router.post("/users/login", async (req, res) => {
+router.post("/userLogin", async (req, res) => {
     try {
         const user = await User.findByCredentials(req.body.email, req.body.password)
         const token = await user.generateAuthToken()
@@ -26,17 +44,15 @@ router.post("/users/login", async (req, res) => {
     }
 })
 
-router.post('/user/logout', auth, async (req, res) => {
+router.post('/userLogoutAll', auth, async (req, res) => {
     try {
-        req.user.tokens = req.user.tokens.filter((token) => {
-            return token.token !== req.token
-        })
+        req.user.tokens = []
         await req.user.save()
-        res.send({ message: "User logged out" })
+        res.send({ message: "All sessions logged out" })
     } catch (e) {
         res.status(500).send()
     }
-})
+});
 
 
 router.get("/user", auth, async (req, res) => {
@@ -46,20 +62,7 @@ router.get("/user", auth, async (req, res) => {
         res.status(500).send()
     }
 })
-
-router.get("/users/:id", auth, async (req, res) => {
-    try {
-        const user = await User.findById(req.params.id)
-        if (!user) {
-            return res.status(404).send()
-        }
-        res.send(user)
-
-    } catch (error) {
-        res.status(500).send(error)
-    }
-})
-router.patch("/users/:id", auth, async (req, res) => {
+router.patch("/userUpdate", auth, async (req, res) => {
 
     const updates = Object.keys(req.body)
     const allowedUpdates = ['name', 'email', 'password', 'age']
@@ -71,31 +74,50 @@ router.patch("/users/:id", auth, async (req, res) => {
     }
 
     try {
-        const user = await User.findById(req.params.id)
-
         updates.forEach((update) => {
-            user[update] = req.body[update]
+            req.user[update] = req.body[update]
         })
-        await user.save()
-        if (!user) {
-            res.status(404).send()
-        }
-        res.status(202).send(user)
+        await req.user.save()
+        res.status(202).send(req.user)
+    } catch (error) {
+        res.status(400).send({ error: "User not found" })
+    }
+})
+
+router.delete("/userDelete", auth, async (req, res) => {
+    try {
+        await req.user.remove()
+        res.send(req.user)
     } catch (error) {
         res.status(400).send()
     }
 })
 
-router.delete("/users/:id", auth, async (req, res) => {
-    const _id = req.params.id
+router.post("/userProfilePic", auth, avatar.single('upload'), async (req, res) => {
+    const modifiedBuffer = await sharp(req.file.buffer).resize({ width: 500, height: 500 }).png().toBuffer()
+    req.user.profilePic = modifiedBuffer
+    await req.user.save()
+    res.send()
+}, (error, req, res, next) => {
+    res.status(400).send({ error: error.message })
+})
+
+router.delete("/userProfilePic", auth, async (req, res) => {
+    req.user.profilePic = undefined
+    await req.user.save()
+    res.send()
+})
+router.get("/user/:id/profilePic", async (req, res) => {
     try {
-        const user = await User.findByIdAndDelete(_id)
-        if (!user) {
-            res.status(404).send()
+        const user = await User.findById(req.params.id)
+        if (!user || !user.profilePic) {
+            throw new Error("Profile picture not found!")
         }
-        res.status(202).send(user)
+        console.log(user)
+        res.set("Content-Type", "image/png")
+        res.send(user.profilePic)
     } catch (error) {
-        res.status(400).send()
+        res.status(404).send()
     }
 })
 
